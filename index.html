@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>函數曲率視覺化工具 (完整版)</title>
+    
+    <!-- 載入 Tailwind CSS (樣式) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 載入 React 和 ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- 載入 Babel (讓瀏覽器看得懂 JSX) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        /* 自定義捲軸 */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+        /* 防止拖曳時選取文字 */
+        .select-none { user-select: none; }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 overflow-hidden">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- 圖示組件 ---
+        const IconBase = ({ size = 24, className = "", children }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {children}
+            </svg>
+        );
+
+        const AlertCircle = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></IconBase>;
+        const ZoomIn = (props) => <IconBase {...props}><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></IconBase>;
+        const ZoomOut = (props) => <IconBase {...props}><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></IconBase>;
+        const RefreshCw = (props) => <IconBase {...props}><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></IconBase>;
+        const Activity = (props) => <IconBase {...props}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></IconBase>;
+        const Move = (props) => <IconBase {...props}><polyline points="5 9 2 12 5 15"></polyline><polyline points="9 5 12 2 15 5"></polyline><polyline points="15 19 12 22 9 19"></polyline><polyline points="19 9 22 12 19 15"></polyline><line x1="2" y1="12" x2="22" y2="12"></line><line x1="12" y1="2" x2="12" y2="22"></line></IconBase>;
+        const Play = (props) => <IconBase {...props}><polygon points="5 3 19 12 5 21 5 3"></polygon></IconBase>;
+        const Square = (props) => <IconBase {...props}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></IconBase>;
+        const Settings = (props) => <IconBase {...props}><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></IconBase>;
+        const PenTool = (props) => <IconBase {...props}><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></IconBase>;
+        const Trash2 = (props) => <IconBase {...props}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></IconBase>;
+        const GitCommit = (props) => <IconBase {...props}><circle cx="12" cy="12" r="4"></circle><line x1="1.05" y1="12" x2="7" y2="12"></line><line x1="17.01" y1="12" x2="22.96" y2="12"></line></IconBase>;
+        const Check = (props) => <IconBase {...props}><polyline points="20 6 9 17 4 12"></polyline></IconBase>;
+        const RotateCcw = (props) => <IconBase {...props}><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></IconBase>;
+        const ArrowUpFromLine = (props) => <IconBase {...props}><path d="m18 9-6-6-6 6"></path><path d="M12 3v14"></path><path d="M5 21h14"></path></IconBase>;
+        const ArrowDownFromLine = (props) => <IconBase {...props}><path d="M19 21H5"></path><path d="M12 17V3"></path><path d="m6 13 6 6 6-6"></path></IconBase>;
+        const Minus = (props) => <IconBase {...props}><line x1="5" y1="12" x2="19" y2="12"></line></IconBase>;
+        const GripVertical = (props) => <IconBase {...props}><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></IconBase>;
+
+        // --- 核心邏輯 ---
+
+        const safeFixed = (val, digits = 4) => {
+            if (val === undefined || val === null) return '-';
+            if (typeof val !== 'number') return '-';
+            if (isNaN(val)) return 'NaN';
+            if (!isFinite(val)) return '∞';
+            if (Math.abs(val) < 1e-10 && val !== 0) return val.toExponential(2); 
+            return val.toFixed(digits);
+        };
+
+        const evaluateMathString = (funcStr, x) => {
+            try {
+                const scope = {
+                    sin: Math.sin, cos: Math.cos, tan: Math.tan, abs: Math.abs,
+                    sqrt: Math.sqrt, pow: Math.pow, exp: Math.exp, log: Math.log,
+                    PI: Math.PI, E: Math.E, e: Math.E, x: x
+                };
+                let parsedStr = funcStr.toLowerCase().replace(/\^/g, '**');
+                const func = new Function('scope', `with (scope) { return (${parsedStr}); }`);
+                const result = func(scope);
+                return isNaN(result) ? null : result;
+            } catch (e) {
+                return null;
+            }
+        };
+
+        const fitCubicPolynomial = (points) => {
+            if (points.length < 4) return null;
+            let xSum = [0, 0, 0, 0, 0, 0, 0];
+            let ySum = [0, 0, 0, 0];
+            const n = points.length;
+            for (let i = 0; i < n; i++) {
+                const x = points[i].x;
+                const y = points[i].y;
+                let xp = 1;
+                for (let j = 0; j <= 6; j++) { xSum[j] += xp; xp *= x; }
+                let yx = y;
+                for (let j = 0; j <= 3; j++) { ySum[j] += yx; yx *= x; }
+            }
+            const matrix = [
+                [xSum[0], xSum[1], xSum[2], xSum[3], ySum[0]],
+                [xSum[1], xSum[2], xSum[3], xSum[4], ySum[1]],
+                [xSum[2], xSum[3], xSum[4], xSum[5], ySum[2]],
+                [xSum[3], xSum[4], xSum[5], xSum[6], ySum[3]]
+            ];
+            const N = 4;
+            for (let i = 0; i < N; i++) {
+                let maxRow = i;
+                for (let k = i + 1; k < N; k++) { if (Math.abs(matrix[k][i]) > Math.abs(matrix[maxRow][i])) maxRow = k; }
+                [matrix[i], matrix[maxRow]] = [matrix[maxRow], matrix[i]];
+                for (let k = i + 1; k < N; k++) {
+                    const factor = matrix[k][i] / matrix[i][i];
+                    for (let j = i; j <= N; j++) { matrix[k][j] -= factor * matrix[i][j]; }
+                }
+            }
+            const coeffs = new Array(N).fill(0);
+            for (let i = N - 1; i >= 0; i--) {
+                let sum = 0;
+                for (let j = i + 1; j < N; j++) { sum += matrix[i][j] * coeffs[j]; }
+                coeffs[i] = (matrix[i][N] - sum) / matrix[i][i];
+            }
+            return coeffs; 
+        };
+
+        const formatPolynomial = (coeffs) => {
+            if (!coeffs) return "無法計算";
+            const [d, c, b, a] = coeffs;
+            const f = (n) => { if (Math.abs(n) < 0.001) return "0"; return n.toFixed(3); };
+            return `${f(a)}x^3 + ${f(b)}x^2 + ${f(c)}x + ${f(d)}`;
+        };
+
+        // --- 主應用程式 ---
+        const CurvatureVisualizer = () => {
+            const [funcString, setFuncString] = React.useState('e^x + x^e'); 
+            const [targetX, setTargetX] = React.useState(0); 
+            const [zoom, setZoom] = React.useState(40); 
+            const [offset, setOffset] = React.useState({ x: 0, y: 0 }); 
+            const [error, setError] = React.useState(null);
+            const [showCurvatureGraph, setShowCurvatureGraph] = React.useState(true); 
+            const [canvasSize, setCanvasSize] = React.useState({ width: 800, height: 600 });
+            
+            const [mode, setMode] = React.useState('manual'); 
+            const [isAnimating, setIsAnimating] = React.useState(false);
+            const animationRef = React.useRef(null);
+
+            const [drawnPoints, setDrawnPoints] = React.useState([]); 
+            const [isDrawingConfirmed, setIsDrawingConfirmed] = React.useState(false); 
+            const [fittedEquation, setFittedEquation] = React.useState('');
+            const [fittedCoeffs, setFittedCoeffs] = React.useState(null); 
+            const [useFittedForCalc, setUseFittedForCalc] = React.useState(true); 
+            
+            const [dragMode, setDragMode] = React.useState(null); 
+            const [lastMousePos, setLastMousePos] = React.useState(null); 
+
+            // Sidebar Resizing State
+            const [sidebarWidth, setSidebarWidth] = React.useState(320);
+            const [isResizingSidebar, setIsResizingSidebar] = React.useState(false);
+            
+            const canvasRef = React.useRef(null);
+            const containerRef = React.useRef(null);
+
+            const STEP = 0.001; 
+            const MIN_ZOOM = 1;
+            const MAX_ZOOM = 500; 
+
+            // Resize Observer for Canvas (Robust)
+            React.useEffect(() => {
+                const container = containerRef.current;
+                if (!container) return;
+
+                const resizeObserver = new ResizeObserver(entries => {
+                    for (let entry of entries) {
+                        const { width, height } = entry.contentRect;
+                        setCanvasSize({ width, height });
+                    }
+                });
+
+                resizeObserver.observe(container);
+                return () => resizeObserver.disconnect();
+            }, []);
+
+            // Sidebar Resizing Logic
+            React.useEffect(() => {
+                const handleMouseMove = (e) => {
+                    if (!isResizingSidebar) return;
+                    let newWidth = e.clientX;
+                    if (newWidth < 200) newWidth = 200; // Min width
+                    if (newWidth > 600) newWidth = 600; // Max width
+                    setSidebarWidth(newWidth);
+                };
+
+                const handleMouseUp = () => {
+                    setIsResizingSidebar(false);
+                };
+
+                if (isResizingSidebar) {
+                    window.addEventListener('mousemove', handleMouseMove);
+                    window.addEventListener('mouseup', handleMouseUp);
+                    document.body.style.cursor = 'col-resize';
+                    // Disable canvas interaction while resizing sidebar
+                    if (containerRef.current) containerRef.current.style.pointerEvents = 'none';
+                } else {
+                    document.body.style.cursor = 'default';
+                    if (containerRef.current) containerRef.current.style.pointerEvents = 'auto';
+                }
+
+                return () => {
+                    window.removeEventListener('mousemove', handleMouseMove);
+                    window.removeEventListener('mouseup', handleMouseUp);
+                    document.body.style.cursor = 'default';
+                    if (containerRef.current) containerRef.current.style.pointerEvents = 'auto';
+                };
+            }, [isResizingSidebar]);
+
+            const handleResizeStart = (e) => {
+                e.preventDefault();
+                setIsResizingSidebar(true);
+            };
+
+            // Mode Reset
+            React.useEffect(() => {
+                if (mode !== 'draw') {
+                    setIsDrawingConfirmed(false);
+                }
+            }, [mode]);
+
+            // Calculate Derivatives
+            const calculateDerivatives = (x) => {
+                if (mode === 'draw' && !isDrawingConfirmed) return null;
+
+                if (mode === 'draw' && useFittedForCalc && fittedCoeffs) {
+                    const [d, c, b, a] = fittedCoeffs;
+                    const y = a*x**3 + b*x**2 + c*x + d;
+                    const dy = 3*a*x**2 + 2*b*x + c;
+                    const d2y = 6*a*x + 2*b;
+                    const curvature = Math.abs(d2y) / Math.pow(1 + dy * dy, 1.5);
+                    const radius = curvature !== 0 ? 1 / curvature : Infinity;
+                    let centerX = x - (dy * (1 + dy * dy)) / d2y;
+                    let centerY = y + (1 + dy * dy) / d2y;
+                    if (Math.abs(d2y) < 1e-8) { centerX = NaN; centerY = NaN; }
+                    return { y, dy, d2y, curvature, radius, centerX, centerY };
+                }
+
+                const getValue = (valX) => {
+                    if (mode === 'draw') {
+                        if (drawnPoints.length < 2) return null;
+                        let left = 0, right = drawnPoints.length - 1;
+                        if (valX < drawnPoints[left].x || valX > drawnPoints[right].x) return null;
+                        while (left <= right) {
+                            const mid = Math.floor((left + right) / 2);
+                            if (drawnPoints[mid].x < valX) left = mid + 1;
+                            else right = mid - 1;
+                        }
+                        const p1 = drawnPoints[right];
+                        const p2 = drawnPoints[left];
+                        if (!p1 || !p2) return null;
+                        if (p1.x === p2.x) return p1.y;
+                        const t = (valX - p1.x) / (p2.x - p1.x);
+                        return p1.y + t * (p2.y - p1.y);
+                    } else {
+                        return evaluateMathString(funcString, valX);
+                    }
+                };
+
+                const y = getValue(x);
+                if (y === null) return null;
+
+                const calcStep = (mode === 'draw') ? 0.05 : 0.001; 
+                const valPlus = getValue(x + calcStep);
+                const valMinus = getValue(x - calcStep);
+
+                if (valPlus === null || valMinus === null) return null;
+
+                const dy = (valPlus - valMinus) / (2 * calcStep);
+                const d2y = (valPlus - 2 * y + valMinus) / (calcStep * calcStep);
+                const numerator = Math.abs(d2y);
+                const denominator = Math.pow(1 + dy * dy, 1.5);
+                const curvature = numerator / denominator;
+                const radius = curvature !== 0 ? 1 / curvature : Infinity;
+                let centerX = x - (dy * (1 + dy * dy)) / d2y;
+                let centerY = y + (1 + dy * dy) / d2y;
+                if (Math.abs(d2y) < 1e-8) { centerX = NaN; centerY = NaN; }
+                return { y, dy, d2y, curvature, radius, centerX, centerY };
+            };
+
+            // Animation
+            const startAnimation = () => {
+                if (isAnimating) return;
+                if (mode === 'draw' && !isDrawingConfirmed) return;
+
+                let startX, endX;
+                if (mode === 'draw') {
+                    if (drawnPoints.length < 2) return;
+                    startX = drawnPoints[0].x;
+                    endX = drawnPoints[drawnPoints.length - 1].x;
+                } else {
+                    const { width } = canvasSize;
+                    const originX = width / 2;
+                    startX = -(originX + offset.x) / zoom;
+                    endX = (width - originX - offset.x) / zoom;
+                }
+                
+                const totalDistance = endX - startX;
+                let maxK = 0;
+                const sampleStep = totalDistance / 100; 
+                
+                for (let x = startX; x <= endX; x += sampleStep) {
+                    const data = calculateDerivatives(x);
+                    if (data && data.curvature > maxK) maxK = data.curvature;
+                }
+                if (maxK < 0.001) maxK = 1;
+
+                const baseSpeed = totalDistance / 3500; 
+                let currentX = startX;
+                let lastTime = performance.now();
+                
+                setIsAnimating(true);
+
+                const animate = (time) => {
+                    const dt = time - lastTime;
+                    lastTime = time;
+
+                    const data = calculateDerivatives(currentX);
+                    const currentK = data ? data.curvature : 0;
+                    
+                    const slowdownRatio = 10.0; 
+                    const curvatureRatio = Math.min(currentK / maxK, 1);
+                    const speedFactor = 1 / (1 + (slowdownRatio - 1) * curvatureRatio);
+                    
+                    currentX += baseSpeed * speedFactor * dt;
+
+                    if (currentX >= endX) {
+                        setTargetX(endX);
+                        setIsAnimating(false);
+                        animationRef.current = null;
+                    } else {
+                        setTargetX(currentX);
+                        animationRef.current = requestAnimationFrame(animate);
+                    }
+                };
+                animationRef.current = requestAnimationFrame(animate);
+            };
+
+            const stopAnimation = () => {
+                if (animationRef.current) cancelAnimationFrame(animationRef.current);
+                setIsAnimating(false);
+            };
+
+            React.useEffect(() => {
+                stopAnimation();
+                if (mode === 'draw' && drawnPoints.length > 0) {
+                    setTargetX(drawnPoints[0].x);
+                }
+            }, [mode]);
+
+            React.useEffect(() => {
+                if (mode === 'draw' && drawnPoints.length > 5) {
+                    const sample = drawnPoints.filter((_, i) => i % 5 === 0);
+                    const coeffs = fitCubicPolynomial(sample);
+                    if (coeffs) {
+                        setFittedCoeffs(coeffs);
+                        setFittedEquation(formatPolynomial(coeffs));
+                    } else {
+                        setFittedCoeffs(null);
+                        setFittedEquation('計算中...');
+                    }
+                } else {
+                    setFittedCoeffs(null);
+                    setFittedEquation('');
+                }
+            }, [drawnPoints, mode]);
+
+            // Wheel Zoom
+            React.useEffect(() => {
+                const container = containerRef.current;
+                if (!container) return;
+
+                const onWheel = (e) => {
+                    e.preventDefault();
+                    const rect = container.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left;
+                    const mouseY = e.clientY - rect.top;
+                    const { width, height } = canvasSize;
+                    const originX = width / 2;
+                    const originY = height / 2;
+                    const delta = -e.deltaY;
+                    const factor = 1.1; 
+                    
+                    let newZoom = delta > 0 ? zoom * factor : zoom / factor;
+                    newZoom = Math.min(Math.max(newZoom, MIN_ZOOM), MAX_ZOOM);
+                    if (newZoom === zoom) return;
+
+                    const k = newZoom / zoom;
+                    const newOffsetX = mouseX - originX - (mouseX - originX - offset.x) * k;
+                    const newOffsetY = mouseY - originY + (originY + offset.y - mouseY) * k;
+
+                    setZoom(newZoom);
+                    setOffset({ x: newOffsetX, y: newOffsetY });
+                };
+                container.addEventListener('wheel', onWheel, { passive: false });
+                return () => container.removeEventListener('wheel', onWheel);
+            }, [zoom, offset, canvasSize]);
+
+            // Drawing Logic
+            const draw = React.useCallback(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                const { width, height } = canvasSize;
+
+                ctx.clearRect(0, 0, width, height);
+                
+                const originX = width / 2;
+                const originY = height / 2;
+                const toScreenX = (x) => originX + offset.x + x * zoom;
+                const toScreenY = (y) => originY + offset.y - y * zoom; 
+
+                // Grid
+                const gridStep = 50 / zoom < 1 ? 1 : 10 ** Math.floor(Math.log10(80/zoom));
+                const decimalPlaces = Math.max(0, -Math.floor(Math.log10(gridStep)));
+
+                ctx.font = '10px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+
+                const leftBound = -(originX + offset.x) / zoom;
+                const rightBound = (width - originX - offset.x) / zoom;
+                const topBound = (originY + offset.y) / zoom;
+                const bottomBound = -(height - originY - offset.y) / zoom;
+                const buffer = gridStep;
+
+                const startX = Math.floor(leftBound / gridStep) * gridStep;
+                for (let x = startX; x <= rightBound + buffer; x += gridStep) {
+                    const sx = toScreenX(x);
+                    ctx.beginPath();
+                    ctx.strokeStyle = Math.abs(x) < 1e-10 ? '#6b7280' : '#374151';
+                    ctx.lineWidth = Math.abs(x) < 1e-10 ? 2 : 1;
+                    ctx.moveTo(sx, 0);
+                    ctx.lineTo(sx, height);
+                    ctx.stroke();
+                    let labelY = toScreenY(0);
+                    if (Math.abs(x) > gridStep / 10) { 
+                        ctx.fillStyle = '#9ca3af';
+                        ctx.fillText(x.toFixed(decimalPlaces), sx, labelY + 4);
+                    }
+                }
+
+                const startY = Math.floor(bottomBound / gridStep) * gridStep;
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'middle';
+                for (let y = startY; y <= topBound + buffer; y += gridStep) {
+                    const sy = toScreenY(y);
+                    ctx.beginPath();
+                    ctx.strokeStyle = Math.abs(y) < 1e-10 ? '#6b7280' : '#374151';
+                    ctx.lineWidth = Math.abs(y) < 1e-10 ? 2 : 1;
+                    ctx.moveTo(0, sy);
+                    ctx.lineTo(width, sy);
+                    ctx.stroke();
+                    let labelX = toScreenX(0);
+                    if (Math.abs(y) > gridStep / 10) {
+                        ctx.fillStyle = '#9ca3af';
+                        ctx.fillText(y.toFixed(decimalPlaces), labelX - 6, sy);
+                    }
+                }
+                
+                const originSx = toScreenX(0);
+                const originSy = toScreenY(0);
+                ctx.fillStyle = '#9ca3af';
+                ctx.textAlign = 'right';
+                ctx.textBaseline = 'top';
+                ctx.fillText('0', originSx - 4, originSy + 4);
+
+                // Function / Drawing
+                if (mode === 'draw') {
+                    if (drawnPoints.length > 0) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = isDrawingConfirmed ? 'rgba(16, 185, 129, 0.3)' : '#10b981';
+                        ctx.lineWidth = isDrawingConfirmed ? 2 : 3;
+                        for (let i = 0; i < drawnPoints.length; i++) {
+                            const sx = toScreenX(drawnPoints[i].x);
+                            const sy = toScreenY(drawnPoints[i].y);
+                            if (i === 0) ctx.moveTo(sx, sy);
+                            else ctx.lineTo(sx, sy);
+                        }
+                        ctx.stroke();
+                    }
+                    if (isDrawingConfirmed && fittedCoeffs) {
+                        const [d, c, b, a] = fittedCoeffs;
+                        ctx.beginPath();
+                        ctx.strokeStyle = '#fb923c'; 
+                        ctx.lineWidth = 3;
+                        ctx.setLineDash([5, 5]);
+                        let started = false;
+                        const pixelStep = 2;
+                        for (let pixelX = 0; pixelX <= width; pixelX += pixelStep) {
+                            const worldX = (pixelX - originX - offset.x) / zoom;
+                            const worldY = a*worldX**3 + b*worldX**2 + c*worldX + d;
+                            const screenY = toScreenY(worldY);
+                            if (screenY > -1000 && screenY < height + 1000) {
+                                if (!started) { ctx.moveTo(pixelX, screenY); started = true; }
+                                else { ctx.lineTo(pixelX, screenY); }
+                            } else { started = false; }
+                        }
+                        ctx.stroke();
+                        ctx.setLineDash([]); 
+                    }
+                } else {
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#60a5fa'; 
+                    ctx.lineWidth = 3;
+                    let started = false;
+                    const pixelStep = 2; 
+                    for (let pixelX = 0; pixelX <= width; pixelX += pixelStep) {
+                        const worldX = (pixelX - originX - offset.x) / zoom;
+                        const worldY = evaluateMathString(funcString, worldX);
+                        if (worldY !== null && isFinite(worldY)) {
+                            const screenY = toScreenY(worldY);
+                            if (screenY > -1000 && screenY < height + 1000) {
+                                if (!started) { ctx.moveTo(pixelX, screenY); started = true; }
+                                else { ctx.lineTo(pixelX, screenY); }
+                            } else { started = false; }
+                        } else { started = false; }
+                    }
+                    ctx.stroke();
+                }
+
+                // Curvature Graph
+                const shouldShowCurvature = showCurvatureGraph && (mode !== 'draw' || isDrawingConfirmed);
+                if (shouldShowCurvature) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#c084fc';
+                    ctx.lineWidth = 2;
+                    let started = false;
+                    const pixelStep = 2;
+                    const rangeStart = mode === 'draw' && drawnPoints.length ? toScreenX(drawnPoints[0].x) : 0;
+                    const rangeEnd = mode === 'draw' && drawnPoints.length ? toScreenX(drawnPoints[drawnPoints.length-1].x) : width;
+
+                    for (let pixelX = Math.max(0, rangeStart); pixelX <= Math.min(width, rangeEnd); pixelX += pixelStep) {
+                        const worldX = (pixelX - originX - offset.x) / zoom;
+                        const data = calculateDerivatives(worldX);
+                        if (data && data.curvature !== null && isFinite(data.curvature)) {
+                            const screenY = toScreenY(data.curvature);
+                            if (screenY > -1000 && screenY < height + 1000) {
+                                if (!started) { ctx.moveTo(pixelX, screenY); started = true; }
+                                else { ctx.lineTo(pixelX, screenY); }
+                            } else { started = false; }
+                        } else { started = false; }
+                    }
+                    ctx.stroke();
+
+                    // Max Curvature Point
+                    let maxK = -1;
+                    let maxK_X = null;
+                    let maxK_Y = null; 
+                    const scanStart = mode === 'draw' && drawnPoints.length ? drawnPoints[0].x : -(originX + offset.x) / zoom;
+                    const scanEnd = mode === 'draw' && drawnPoints.length ? drawnPoints[drawnPoints.length-1].x : (width - originX - offset.x) / zoom;
+                    const scanStep = (scanEnd - scanStart) / 200; 
+
+                    if (scanStep > 0) {
+                        for (let x = scanStart; x <= scanEnd; x += scanStep) {
+                            const data = calculateDerivatives(x);
+                            if (data && data.curvature > maxK) {
+                                maxK = data.curvature;
+                                maxK_X = x;
+                                maxK_Y = data.y;
+                            }
+                        }
+                    }
+
+                    if (maxK_X !== null && maxK > 0.01) {
+                        const screenMaxX = toScreenX(maxK_X);
+                        const screenMaxY_Func = toScreenY(maxK_Y);
+                        const screenMaxY_K = toScreenY(maxK);
+
+                        ctx.beginPath();
+                        ctx.fillStyle = '#facc15';
+                        ctx.shadowColor = '#facc15';
+                        ctx.shadowBlur = 10;
+                        ctx.arc(screenMaxX, screenMaxY_Func, 5, 0, 2 * Math.PI);
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
+                        ctx.fillStyle = '#facc15';
+                        ctx.textAlign = 'left';
+                        ctx.fillText('Max κ', screenMaxX + 8, screenMaxY_Func);
+
+                        ctx.beginPath();
+                        ctx.fillStyle = '#facc15';
+                        ctx.shadowColor = '#facc15';
+                        ctx.shadowBlur = 10;
+                        ctx.arc(screenMaxX, screenMaxY_K, 5, 0, 2 * Math.PI);
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
+                    }
+                }
+
+                // Target Point
+                const shouldShowTarget = mode !== 'draw' || isDrawingConfirmed;
+                if (shouldShowTarget) {
+                    const data = calculateDerivatives(targetX);
+                    if (data && data.y !== null && isFinite(data.y)) {
+                        const screenTargetX = toScreenX(targetX);
+                        const screenTargetY = toScreenY(data.y);
+
+                        if (data.curvature > 0.0001 && isFinite(data.centerX) && isFinite(data.centerY)) {
+                            const screenCenterX = toScreenX(data.centerX);
+                            const screenCenterY = toScreenY(data.centerY);
+                            const screenRadius = data.radius * zoom;
+                            ctx.beginPath();
+                            ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
+                            ctx.fillStyle = 'rgba(239, 68, 68, 0.1)';
+                            ctx.lineWidth = 2;
+                            ctx.arc(screenCenterX, screenCenterY, Math.abs(screenRadius), 0, 2 * Math.PI);
+                            ctx.fill();
+                            ctx.stroke();
+                            ctx.beginPath();
+                            ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)';
+                            ctx.moveTo(screenCenterX, screenCenterY);
+                            ctx.lineTo(screenTargetX, screenTargetY);
+                            ctx.stroke();
+                            ctx.beginPath();
+                            ctx.fillStyle = '#ef4444';
+                            ctx.arc(screenCenterX, screenCenterY, 4, 0, 2 * Math.PI);
+                            ctx.fill();
+                        }
+                        ctx.beginPath();
+                        ctx.fillStyle = '#3b82f6';
+                        ctx.arc(screenTargetX, screenTargetY, 8, 0, 2 * Math.PI); 
+                        ctx.fill();
+                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = '#fff';
+                        ctx.stroke();
+                    } 
+                }
+            }, [mode, funcString, drawnPoints, targetX, zoom, offset, canvasSize, showCurvatureGraph, fittedCoeffs, useFittedForCalc, isDrawingConfirmed]);
+
+            React.useEffect(() => { requestAnimationFrame(draw); }, [draw]);
+
+            // Interaction
+            const handleMouseDown = (e) => {
+                if (mode === 'auto' && isAnimating) return;
+                const rect = canvasRef.current.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const { width, height } = canvasSize;
+                const originX = width / 2;
+                const originY = height / 2;
+                const mathX = (x - originX - offset.x) / zoom;
+                const mathY = (originY + offset.y - y) / zoom; 
+
+                if (mode === 'draw') {
+                    if (!isDrawingConfirmed) {
+                        setDragMode('drawing');
+                        setDrawnPoints([{ x: mathX, y: mathY }]);
+                        setTargetX(mathX);
+                    } else {
+                        const val = calculateDerivatives(targetX)?.y ?? 0;
+                        const screenTargetX = originX + offset.x + targetX * zoom;
+                        const screenTargetY = originY + offset.y - val * zoom;
+                        const dist = Math.sqrt((x - screenTargetX)**2 + (y - screenTargetY)**2);
+                        if (dist < 20) setDragMode('point');
+                        else setDragMode('pan');
+                    }
+                } else {
+                    const val = evaluateMathString(funcString, targetX);
+                    const screenTargetX = originX + offset.x + targetX * zoom;
+                    const screenTargetY = originY + offset.y - val * zoom;
+                    const dist = Math.sqrt((x - screenTargetX)**2 + (y - screenTargetY)**2);
+                    if (dist < 20) setDragMode('point');
+                    else setDragMode('pan');
+                }
+                setLastMousePos({ x, y });
+            };
+
+            const handleMouseMove = (e) => {
+                if (mode === 'auto' && isAnimating) return;
+                const rect = canvasRef.current.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const { width, height } = canvasSize;
+                const originX = width / 2;
+                const originY = height / 2;
+
+                if (!dragMode) {
+                    if (mode === 'draw' && !isDrawingConfirmed) canvasRef.current.style.cursor = 'crosshair';
+                    else canvasRef.current.style.cursor = 'default';
+                    return;
+                }
+
+                if (dragMode === 'drawing') {
+                    const mathX = (x - originX - offset.x) / zoom;
+                    const mathY = (originY + offset.y - y) / zoom;
+                    const lastP = drawnPoints[drawnPoints.length - 1];
+                    if (mathX > lastP.x) {
+                        setDrawnPoints(prev => [...prev, { x: mathX, y: mathY }]);
+                        setTargetX(mathX); 
+                    }
+                } 
+                else if (dragMode === 'point') {
+                    const mathX = (x - originX - offset.x) / zoom;
+                    setTargetX(mathX);
+                } 
+                else if (dragMode === 'pan') {
+                    const dx = x - lastMousePos.x;
+                    const dy = y - lastMousePos.y;
+                    setOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+                    setLastMousePos({ x, y });
+                }
+            };
+
+            const handleMouseUp = () => { setDragMode(null); };
+
+            const metrics = calculateDerivatives(targetX);
+            let concavityStatus = "平 (Flat)";
+            let concavityIcon = <Minus size={14} />;
+            if (metrics) {
+                if (Math.abs(metrics.d2y) < 0.05) { 
+                    concavityStatus = "反曲點 (Inflection)";
+                    concavityIcon = <RefreshCw size={14} className="text-orange-400" />;
+                } else if (metrics.d2y > 0) {
+                    concavityStatus = "向上 (Concave Up)";
+                    concavityIcon = <ArrowUpFromLine size={14} className="text-green-400" />;
+                } else {
+                    concavityStatus = "向下 (Concave Down)";
+                    concavityIcon = <ArrowDownFromLine size={14} className="text-red-400" />;
+                }
+            }
+            const displayData = metrics ? {
+                curvature: metrics.curvature,
+                radius: metrics.radius,
+                slope: metrics.dy,
+                x: targetX,
+                y: metrics.y,
+            } : null;
+
+            return (
+                <div className="flex flex-col h-screen bg-gray-950 text-gray-100 font-sans overflow-hidden">
+                    <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between shadow-sm z-10 select-none">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-blue-600 p-2 rounded-lg text-white">
+                                <RefreshCw size={24} />
+                            </div>
+                            <div>
+                                <h1 className="text-xl font-bold text-gray-100">曲率視覺化工具</h1>
+                                <p className="text-xs text-gray-400">互動式微積分學習</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            {mode !== 'draw' ? (
+                                <div className="relative group">
+                                    <div className="flex items-center border border-gray-700 rounded-lg overflow-hidden bg-gray-800">
+                                        <span className="pl-3 pr-2 text-gray-400 font-serif italic">f(x) =</span>
+                                        <input
+                                            type="text"
+                                            value={funcString}
+                                            onChange={(e) => setFuncString(e.target.value)}
+                                            className="py-2 pr-4 w-64 outline-none text-gray-100 bg-transparent placeholder-gray-500"
+                                        />
+                                        {error && <div className="pr-2 text-red-400"><AlertCircle size={18} /></div>}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-3 bg-green-900/20 border border-green-800 px-4 py-2 rounded-lg transition-all">
+                                    <PenTool size={18} className="text-green-400" />
+                                    <span className="text-green-400 font-medium text-sm">
+                                        {isDrawingConfirmed ? "分析模式：可拖曳藍點或播放動畫" : "繪圖模式：請從左向右畫線"}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    </header>
+
+                    <div className="flex-1 flex overflow-hidden relative">
+                        {/* Sidebar */}
+                        <div 
+                            className="bg-gray-900 border-r border-gray-800 p-6 flex flex-col gap-6 overflow-y-auto shadow-[4px_0_24px_rgba(0,0,0,0.3)] z-10 shrink-0"
+                            style={{ width: sidebarWidth, minWidth: 200, maxWidth: 600 }}
+                        >
+                            <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 space-y-3">
+                                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                                    <Settings size={14} /> 操作模式
+                                </h3>
+                                <div className="relative">
+                                    <select 
+                                        value={mode}
+                                        onChange={(e) => setMode(e.target.value)}
+                                        className="w-full appearance-none bg-gray-700 border border-gray-600 text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5"
+                                    >
+                                        <option value="manual">手動調控 (滑鼠拖曳)</option>
+                                        <option value="auto">自動動畫 (播放演示)</option>
+                                        <option value="draw">手繪模式 (畫出方程式)</option>
+                                    </select>
+                                </div>
+                                {mode === 'auto' && (
+                                    <div className="flex gap-2 animate-in fade-in">
+                                        {!isAnimating ? (
+                                            <button onClick={startAnimation} className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm">
+                                                <Play size={14} fill="currentColor" /> 開始
+                                            </button>
+                                        ) : (
+                                            <button onClick={stopAnimation} className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg text-sm">
+                                                <Square size={14} fill="currentColor" /> 停止
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                                {mode === 'draw' && (
+                                    <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                                        {!isDrawingConfirmed ? (
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    onClick={() => {
+                                                        if (drawnPoints.length > 5) setIsDrawingConfirmed(true);
+                                                        else alert("請先畫出一條夠長的線！");
+                                                    }}
+                                                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${drawnPoints.length > 5 ? 'bg-green-600 text-white hover:bg-green-700 shadow-sm' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}
+                                                >
+                                                    <Check size={16} /> 確認繪製完畢
+                                                </button>
+                                                <button 
+                                                    onClick={() => setDrawnPoints([])}
+                                                    className="p-2 bg-gray-800 border border-gray-600 text-gray-300 hover:bg-red-900/30 hover:text-red-400 hover:border-red-800 rounded-lg transition-colors"
+                                                    title="清除重畫"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    onClick={() => {
+                                                        setIsDrawingConfirmed(false);
+                                                        setDrawnPoints([]);
+                                                        setFittedCoeffs(null);
+                                                    }}
+                                                    className="flex-1 flex items-center justify-center gap-2 bg-gray-800 border-2 border-orange-500 text-orange-400 hover:bg-gray-700 py-2 px-3 rounded-lg text-sm font-bold transition-colors"
+                                                >
+                                                    <RotateCcw size={16} /> 重畫
+                                                </button>
+                                            </div>
+                                        )}
+                                        <div className="bg-gray-950 p-3 rounded border border-gray-700 text-xs">
+                                            <p className="text-gray-400 mb-1">AI 擬合方程式:</p>
+                                            <p className="font-mono text-blue-400 font-bold break-all">
+                                                {fittedEquation || (drawnPoints.length > 0 ? "繪製中..." : "尚未繪製")}
+                                            </p>
+                                        </div>
+                                        {isDrawingConfirmed && (
+                                            <button 
+                                                onClick={() => setUseFittedForCalc(!useFittedForCalc)}
+                                                className={`w-full flex items-center justify-center gap-2 py-2 px-3 rounded text-xs font-medium border transition-colors ${useFittedForCalc ? 'bg-blue-900/30 border-blue-800 text-blue-300' : 'bg-gray-800 border-gray-600 text-gray-400'}`}
+                                            >
+                                                <GitCommit size={14} />
+                                                {useFittedForCalc ? "已啟用：AI 曲線平滑化 (推薦)" : "已停用：使用原始手繪數據"}
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            <button 
+                                onClick={() => setShowCurvatureGraph(!showCurvatureGraph)}
+                                className={`flex items-center justify-between p-3 rounded-lg border transition-all ${
+                                    showCurvatureGraph 
+                                    ? 'bg-purple-900/20 border-purple-800 text-purple-300' 
+                                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-750'
+                                }`}
+                            >
+                                <div className="flex items-center gap-2 font-medium text-sm">
+                                    <Activity size={18} />
+                                    {showCurvatureGraph ? '隱藏曲率函數圖' : '顯示曲率函數圖'}
+                                </div>
+                                <div className={`w-8 h-4 rounded-full relative transition-colors ${showCurvatureGraph ? 'bg-purple-500' : 'bg-gray-600'}`}>
+                                    <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all shadow-sm ${showCurvatureGraph ? 'left-4.5' : 'left-0.5'}`} style={{left: showCurvatureGraph ? '18px' : '2px'}}></div>
+                                </div>
+                            </button>
+
+                            <div className="space-y-6">
+                                <div className="border-b border-gray-700 pb-2">
+                                    <h2 className="text-lg font-semibold text-gray-100">座標資料</h2>
+                                </div>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center bg-gray-800 -mx-2 px-2 py-1 rounded">
+                                        <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">x</span>
+                                        <span className="font-mono font-medium text-blue-400">{safeFixed(displayData?.x)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-gray-800 -mx-2 px-2 py-1 rounded">
+                                        <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">y</span>
+                                        <span className="font-mono font-medium text-blue-400">{safeFixed(displayData?.y)}</span>
+                                    </div>
+                                </div>
+
+                                <div className="border-b border-gray-700 pb-2 mt-4">
+                                    <h2 className="text-lg font-semibold text-gray-100">微積分數值</h2>
+                                </div>
+                                <div className="space-y-3">
+                                    <div className={`flex justify-between items-center bg-gray-800 -mx-2 px-2 py-1 rounded`}>
+                                        <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">凹凸性</span>
+                                        <div className="flex items-center gap-1 font-mono font-medium text-gray-200 text-sm">
+                                            {concavityIcon}
+                                            <span>{concavityStatus}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-gray-800 -mx-2 px-2 py-1 rounded">
+                                        <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">斜率 (dy/dx)</span>
+                                        <span className="font-mono font-medium text-gray-200">{safeFixed(displayData?.slope)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-gray-800 -mx-2 px-2 py-1 rounded">
+                                        <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">曲率 (κ)</span>
+                                        <span className="font-mono font-medium text-purple-400">{safeFixed(displayData?.curvature)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-gray-800 -mx-2 px-2 py-1 rounded">
+                                        <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">半徑 (R)</span>
+                                        <span className="font-mono font-medium text-red-400">{safeFixed(displayData?.radius)}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="mt-auto pt-6 border-t border-gray-800">
+                                <label className="text-xs font-semibold text-gray-400 mb-2 block">縮放比例</label>
+                                <div className="flex items-center gap-3">
+                                    <button onClick={() => setZoom(z => Math.max(MIN_ZOOM, z - 10))} className="p-2 hover:bg-gray-800 rounded-full text-gray-400">
+                                        <ZoomOut size={20} />
+                                    </button>
+                                    <input type="range" min={MIN_ZOOM} max={MAX_ZOOM} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+                                    <button onClick={() => setZoom(z => Math.min(MAX_ZOOM, z + 10))} className="p-2 hover:bg-gray-800 rounded-full text-gray-400">
+                                        <ZoomIn size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Resizer Handle */}
+                        <div
+                            className="w-1 bg-gray-800 hover:bg-blue-500 cursor-col-resize transition-colors z-20 flex items-center justify-center shrink-0"
+                            onMouseDown={handleResizeStart}
+                        >
+                            <div className="w-0.5 h-8 bg-gray-600 rounded-full"></div>
+                        </div>
+
+                        {/* Canvas Container */}
+                        <div 
+                            ref={containerRef} 
+                            className="flex-1 bg-black relative min-w-0"
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={handleMouseUp}
+                            onMouseLeave={handleMouseUp}
+                        >
+                            <canvas ref={canvasRef} width={canvasSize.width} height={canvasSize.height} className="block" />
+                            
+                            <div className="absolute bottom-6 right-6">
+                                <button 
+                                    onClick={() => { setOffset({x: 0, y: 0}); setZoom(40); setTargetX(mode === 'draw' && drawnPoints.length ? drawnPoints[0].x : 0); }}
+                                    className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 shadow-md border border-gray-700 rounded-lg text-sm font-medium transition-colors"
+                                >
+                                    <Move size={16} /> 重置視角
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<CurvatureVisualizer />);
+    </script>
+</body>
+</html>
